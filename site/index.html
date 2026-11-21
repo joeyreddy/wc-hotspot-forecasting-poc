@@ -1,0 +1,221 @@
+<title>WC Hotspot Forecasting PoC</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Archivo:wght@600;800&display=swap">
+<style>
+/* Layout: synthetic banner -> headline result -> map beside model scores -> evidence sections -> path to production */
+:root{
+ --bg:#f3f5f7;--panel:#ffffff;--fg:#14202b;--muted:#5a6977;--line:#dbe1e7;
+ --flag:#e8a33d;--flag-soft:#f7dfb6;--hit:#b3261e;--pop:#2f5d7c;--accent:#1f5f8b;--good:#2c7a4b;--bad:#b3261e;
+ --stripe:#fff4d6;--stripe-fg:#6b4a00;
+ --display:'Archivo',system-ui,sans-serif;--body:'IBM Plex Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f161d;--panel:#16202a;--fg:#e4ebf1;--muted:#93a3b2;--line:#2a3846;--flag:#f0b454;--flag-soft:#4a3a1c;--hit:#ff6b5e;--pop:#7fb3d6;--accent:#6fb0e0;--good:#6cc58f;--bad:#ff7b6e;--stripe:#3a2e10;--stripe-fg:#ffd98a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f161d;--panel:#16202a;--fg:#e4ebf1;--muted:#93a3b2;--line:#2a3846;--flag:#f0b454;--flag-soft:#4a3a1c;--hit:#ff6b5e;--pop:#7fb3d6;--accent:#6fb0e0;--good:#6cc58f;--bad:#ff7b6e;--stripe:#3a2e10;--stripe-fg:#ffd98a;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 48px}
+.wrap{max-width:1280px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.synth{background:repeating-linear-gradient(-45deg,var(--stripe),var(--stripe) 14px,var(--panel) 14px,var(--panel) 28px);border:1px solid var(--flag);color:var(--stripe-fg);border-radius:8px;padding:10px 14px;font-size:13.5px;line-height:1.5}
+.synth b{font-weight:600}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(24px,3.2vw,34px);margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font-family:var(--display);font-weight:600;font-size:17px;margin:0 0 8px;text-wrap:balance}
+.lede{color:var(--muted);max-width:78ch;line-height:1.55;margin:6px 0 0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.kpi .n{font-family:var(--mono);font-size:26px;font-weight:500;font-variant-numeric:tabular-nums}
+.kpi .l{font-size:12.5px;color:var(--muted);line-height:1.45}
+.grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px}
+@media (max-width:920px){.grid{grid-template-columns:1fr}}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:10px}
+label{display:flex;flex-direction:column;gap:4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+select,input[type=range]{font:inherit;font-size:14px}
+select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg)}
+.seg{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{font:inherit;font-size:13px;border:0;background:var(--panel);color:var(--fg);padding:6px 10px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--panel)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#mapbox{position:relative;width:100%;aspect-ratio:4/3;max-width:100%;border-radius:6px;overflow:hidden;background:var(--bg);cursor:grab;touch-action:none}
+#map{width:100%;height:100%;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted);margin-top:8px;align-items:center}
+.sw{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-2px;margin-right:4px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--hit);vertical-align:-1px;margin-right:4px}
+.monthline{font-size:13.5px;margin-top:8px;line-height:1.5}
+.monthline b{font-family:var(--mono);font-weight:500}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{text-align:right;font-weight:500;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12.5px}
+th:first-child,td:first-child{text-align:left;font-family:var(--body)}
+tr.best td{font-weight:600}
+.tbl{overflow-x:auto}
+.note{font-size:12.5px;color:var(--muted);line-height:1.55}
+.note b{color:var(--fg);font-weight:500}
+svg text{fill:var(--muted);font-family:var(--mono);font-size:10px}
+.knox td{font-family:var(--mono);text-align:center}
+.cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.pill{display:inline-block;font-size:11px;font-weight:600;border-radius:10px;padding:1px 8px;border:1px solid currentColor}
+.pill.real{color:var(--good)}.pill.syn{color:var(--stripe-fg);background:var(--stripe)}
+.prose{max-width:80ch;line-height:1.6;font-size:14px}
+.prose li{margin:4px 0}
+</style>
+
+<div class="wrap">
+<div class="synth" role="note"><b>Synthetic data.</b> Every incident location and time on this page is invented. The number of crimes per police station per month is real (SAPS, April 2021 to September 2026), so totals, trends and the stations that matter are genuine; where inside a precinct, and when, each crime happened is simulated.</div>
+
+<header>
+<h1>Hotspot forecasting for the Western Cape: proof of concept</h1>
+<p class="lede">What the province could do with incident-level crime data. At the end of each month the system ranks every 500 m block in the populated Western Cape (19,848 blocks across 152 police precincts) and flags the 5% where crime is most likely next month. Below, five forecasting methods are tested on 24 months they had not seen, using the standard measures crime analysts use.</p>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="grid">
+<section class="panel" aria-labelledby="maph">
+<h2 id="maph">Next month's hotspots against what happened</h2>
+<div class="controls">
+<label for="typ">Crime<select id="typ"></select></label>
+<label for="mdl">Method<select id="mdl"></select></label>
+<label for="mon" style="flex:1;min-width:180px">Month <span id="monl" style="text-transform:none;letter-spacing:0;color:var(--fg)"></span><input type="range" id="mon" min="0" max="23" step="1"></label>
+<div class="seg" id="view" aria-label="Map view"><button type="button" data-v="wc" aria-pressed="false">Province</button><button type="button" data-v="ct" aria-pressed="true">Cape Town</button><button type="button" data-v="flats" aria-pressed="false">Cape Flats</button></div>
+</div>
+<div id="mapbox"><canvas id="map" aria-label="Map of flagged 500 metre blocks and crimes"></canvas></div>
+<div class="legend"><span><i class="sw" style="background:var(--flag)"></i>Flagged block (top 5%)</span><span><i class="dot"></i>Crime that month (size = count)</span><span><i class="sw" style="background:var(--pop);opacity:.25"></i>Populated block</span><span>Drag to pan, scroll or pinch to zoom</span></div>
+<div class="monthline" id="monthline"></div>
+</section>
+
+<div class="col">
+<section class="panel"><h2 id="scoreh">How the methods compare</h2>
+<div class="tbl"><table id="scores"></table></div>
+<p class="note"><b>Hit rate</b>: share of next month's crimes inside the flagged 5%. <b>PAI</b> (Prediction Accuracy Index): hit rate divided by area share; 1 is no better than random. <b>PEI</b>: crimes caught as a share of the most that any choice of the same number of blocks could have caught. Averages over 24 test months, October 2024 to September 2026.</p>
+</section>
+<section class="panel"><h2>Hit rate by month</h2><div id="trend"></div></section>
+</div>
+</div>
+
+<div class="cols2">
+<section class="panel"><h2>Do crimes cluster in space and time?</h2>
+<p class="note" style="margin-top:0">Knox test on murders and attempted murders, last 12 months: how many more pairs of crimes occur close together in both space and time than if timing were random. Above 1 means near-repeat clustering, the pattern self-exciting models exploit.</p>
+<div class="tbl"><table class="knox" id="knox"></table></div>
+<p class="note">On real data this test answers whether retaliation and contagion effects exist in Western Cape gang violence. Here they were built into the simulation, so the result shows the method works, not that the effect is real.</p>
+</section>
+<section class="panel"><h2>How reliable are the ranges?</h2>
+<div class="tbl"><table id="cover"></table></div>
+<p class="note">Share of police stations whose actual monthly count fell inside the forecast's 80% range. A plain Poisson model assumes too little variation; a negative-binomial model, which allows extra variation, gets closer to 80%.</p>
+</section>
+</div>
+
+<div class="cols2">
+<section class="panel"><h2>Who gets flagged?</h2><div id="bias"></div>
+<p class="note">Flagging follows where crime is reported. A real deployment would also check flagged areas by income and race, and track whether patrols shift crime elsewhere.</p>
+</section>
+<section class="panel"><h2>The feedback-loop trap</h2><div id="fb"></div>
+<p class="note">Simulation of police-detected crime such as drugs: detections depend on where police already patrol. Sending patrols wherever detections were highest locks onto the starting areas. The detections look more and more concentrated, which reads as success, while patrols drift away from where activity really is. Planning on crime the public reports avoids the trap.</p>
+</section>
+</div>
+
+<section class="panel"><h2>From proof of concept to a working system</h2>
+<div class="tbl"><table id="need"></table></div>
+</section>
+
+<section class="panel prose"><h2>What this proves, and what it does not</h2>
+<ul>
+<li><b>Proves</b>: the full pipeline runs end to end at provincial scale. That covers building a 500 m grid with population, placing incidents, forecasting every block monthly, scoring with standard measures, checking uncertainty, auditing who is flagged and simulating feedback loops.</li>
+<li><b>Proves</b>: the evaluation can tell methods apart. Simple "last month" hotspots do worst; methods that combine long-run hotspots with recent nearby crime do best.</li>
+<li><b>Does not prove</b>: that these accuracy levels hold for the Western Cape. Locations, timing and clustering are simulated, and the real numbers can only come from real incident data.</li>
+<li><b>Safeguards</b>: area-level only, no personal data, police-detected crime kept separate, ranges shown with every forecast, and human decisions on deployment.</li>
+</ul>
+<p class="note">Method: monthly SAPS station totals for murder, attempted murder, robbery with aggravating circumstances and residential burglary (152 Western Cape precincts) are spread over 500 m blocks in proportion to population, persistent neighbourhood risk and recent nearby crime. Models are refitted on data before each test month. Code: <span style="font-family:var(--mono)">poc/</span> in the CrimeStats repository.</p>
+</section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const NAMES={naive:'Last month',persistent:'Last 12 months',kde:'Smoothed last 3 months',self_exciting:'Self-exciting (hotspots + recent nearby crime)',glm:'Poisson regression'};
+const SHORTN={naive:'Last month',persistent:'Last 12 months',kde:'Smoothed 3 months',self_exciting:'Self-exciting',glm:'Poisson regression'};
+const VIEWS={wc:null,ct:[[18.3,-34.25],[18.95,-33.55]],flats:[[18.45,-34.08],[18.78,-33.88]]};
+const css=k=>getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+const pct=v=>Math.round(v*100)+'%';
+const undelta=a=>{let p=0;return a.map(d=>p+=d)};
+let D,st={typ:'murder',mdl:'self_exciting',mon:23,view:'ct'},proj,zt=d3.zoomIdentity,cellPx=2;
+
+fetch('poc-data.json').then(r=>r.json()).then(d=>{D=d;init()}).catch(()=>{$('#monthline').textContent='The data file could not load. Reload the page to try again.'});
+
+function init(){
+ for(const [k,v] of Object.entries(D.types))$('#typ').add(new Option(v.label,k));
+ for(const m of D.models)$('#mdl').add(new Option(NAMES[m],m));
+ $('#typ').value=st.typ;$('#mdl').value=st.mdl;$('#mon').value=st.mon;
+ $('#typ').onchange=e=>{st.typ=e.target.value;render()};
+ $('#mdl').onchange=e=>{st.mdl=e.target.value;render()};
+ $('#mon').oninput=e=>{st.mon=+e.target.value;render()};
+ document.querySelectorAll('#view button').forEach(b=>b.onclick=()=>{st.view=b.dataset.v;document.querySelectorAll('#view button').forEach(x=>x.setAttribute('aria-pressed',x===b));fit(true)});
+ const cv=$('#map');
+ d3.select(cv).call(d3.zoom().scaleExtent([.5,40]).on('zoom',e=>{zt=e.transform;draw()}));
+ new ResizeObserver(()=>fit(false)).observe($('#mapbox'));
+ if(window.matchMedia)matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+ knox();cover();bias();feedback();need();fit(true);render()}
+
+function fit(reset){const box=$('#mapbox'),cv=$('#map'),w=box.clientWidth,h=box.clientHeight,dpr=Math.min(2,devicePixelRatio||1);
+ cv.width=w*dpr;cv.height=h*dpr;const ctx=cv.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);
+ const v=VIEWS[st.view];const pts=v?{type:'MultiPoint',coordinates:v}:{type:'MultiPoint',coordinates:D.cells.lon.map((x,i)=>[x,D.cells.lat[i]])};
+ proj=d3.geoMercator().fitExtent([[10,10],[w-10,h-10]],pts);
+ const a=proj([18.6,-33.9]),b=proj([18.6+500/(111320*Math.cos(33.9*Math.PI/180)),-33.9]);cellPx=Math.max(.6,b[0]-a[0]);
+ if(reset){zt=d3.zoomIdentity;d3.select(cv).call(d3.zoom().transform,d3.zoomIdentity)}draw()}
+
+function cur(){const T=D.types[st.typ];return {T,flags:new Set(undelta(T.flags[st.mdl][st.mon])),act:undelta(T.actual[st.mon]),n:T.actual_n[st.mon]}}
+
+function draw(){if(!D||!proj)return;const cv=$('#map'),ctx=cv.getContext('2d'),w=cv.clientWidth,h=cv.clientHeight;
+ ctx.save();ctx.clearRect(0,0,w,h);ctx.translate(zt.x,zt.y);ctx.scale(zt.k,zt.k);
+ const {flags,act,n}=cur();const C=D.cells,s=cellPx;const popC=css('--pop'),flagC=css('--flag'),hitC=css('--hit'),fg=css('--fg');
+ ctx.fillStyle=popC;
+ for(let i=0;i<C.lon.length;i++){if(C.rural[i])continue;const p=proj([C.lon[i],C.lat[i]]);ctx.globalAlpha=Math.min(.45,.06+Math.log10(1+C.pop[i])*.09);ctx.fillRect(p[0]-s/2,p[1]-s/2,s,s)}
+ ctx.globalAlpha=.95;ctx.fillStyle=flagC;
+ for(const i of flags){const p=proj([C.lon[i],C.lat[i]]);ctx.fillRect(p[0]-s/2,p[1]-s/2,s,s)}
+ ctx.globalAlpha=.85;ctx.fillStyle=hitC;ctx.strokeStyle=fg;ctx.lineWidth=.6/zt.k;
+ act.forEach((i,k)=>{if(C.rural[i])return;const p=proj([C.lon[i],C.lat[i]]);const r=Math.max(1.3/zt.k,Math.sqrt(n[k])*Math.max(1.2,s*.35));ctx.beginPath();ctx.arc(p[0],p[1],r,0,7);ctx.fill();if(flags.has(i))ctx.stroke()});
+ ctx.restore()}
+
+function render(){const {T,flags,act,n}=cur();const m=T.monthly[st.mdl][st.mon];const mon=D.months[st.mon];
+ const lab=new Date(mon).toLocaleDateString('en-ZA',{month:'long',year:'numeric'});$('#monl').textContent=lab;
+ let tot=0,hit=0;act.forEach((c,k)=>{tot+=n[k];if(flags.has(c))hit+=n[k]});
+ $('#monthline').innerHTML=m?`${lab}: the flagged 5% of blocks caught <b>${hit}</b> of <b>${tot}</b> ${T.label.toLowerCase()} cases (${pct(m.hit)}), <b>${m.pai.toFixed(1)}×</b> better than random (PAI), using ${SHORTN[st.mdl].toLowerCase()}.`:'No crimes of this type that month.';
+ draw();scores();trend();kpis()}
+
+function kpis(){const T=D.types[st.typ];const best=D.models.reduce((a,b)=>T.mean[b].pai>T.mean[a].pai?b:a);const nv=T.mean.naive;
+ $('#kpis').innerHTML=[
+  [pct(T.mean[best].hit),`of next month's ${T.label.toLowerCase()} cases fall in the flagged 5% of populated blocks (${SHORTN[best].toLowerCase()})`],
+  [T.mean[best].pai.toFixed(1)+'×',`better than random targeting (PAI), against ${nv.pai.toFixed(1)}× for last month's hotspots`],
+  ['24','months of out-of-sample testing, October 2024 to September 2026, refitted before each month'],
+  ['152','Western Cape police precincts; real SAPS monthly totals, simulated locations']].map(([a,b])=>`<div class="kpi"><div class="n">${a}</div><div class="l">${b}</div></div>`).join('')}
+
+function scores(){const T=D.types[st.typ];const best=D.models.reduce((a,b)=>T.mean[b].pai>T.mean[a].pai?b:a);
+ $('#scoreh').textContent=`How the methods compare: ${T.label.toLowerCase()}`;
+ $('#scores').innerHTML=`<thead><tr><th>Method</th><th>Hit rate</th><th>PAI</th><th>PEI</th></tr></thead><tbody>${D.models.map(m=>`<tr class="${m===best?'best':''}"><td>${SHORTN[m]}${m===best?' ✓':''}</td><td>${pct(T.mean[m].hit)}</td><td>${T.mean[m].pai.toFixed(1)}</td><td>${T.mean[m].pei.toFixed(2)}</td></tr>`).join('')}</tbody>`}
+
+function trend(){const T=D.types[st.typ];const W=460,H=190,x=d3.scaleLinear([0,23],[34,W-8]);
+ const all=D.models.flatMap(m=>T.monthly[m].map(r=>r?r.hit:null)).filter(v=>v!=null);const y=d3.scaleLinear([Math.max(0,d3.min(all)-.05),Math.min(1,d3.max(all)+.05)],[H-22,8]);
+ const col={naive:css('--muted'),persistent:css('--pop'),kde:'#8a6fb0',self_exciting:css('--flag'),glm:css('--hit')};
+ const ln=m=>d3.line().defined(d=>d!=null).x((d,i)=>x(i)).y(d=>y(d))(T.monthly[m].map(r=>r?r.hit:null));
+ $('#trend').innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Hit rate by month for each method">${y.ticks(4).map(t=>`<line x1="34" x2="${W-8}" y1="${y(t)}" y2="${y(t)}" stroke="${css('--line')}"/><text x="30" y="${y(t)+3}" text-anchor="end">${Math.round(t*100)}%</text>`).join('')}${[0,6,12,18,23].map(i=>`<text x="${x(i)}" y="${H-6}" text-anchor="middle">${D.months[i].slice(2,7).replace('-','/')}</text>`).join('')}<line x1="${x(st.mon)}" x2="${x(st.mon)}" y1="8" y2="${H-22}" stroke="${css('--fg')}" stroke-dasharray="2 3" opacity=".5"/>${D.models.map(m=>`<path d="${ln(m)}" fill="none" stroke="${col[m]}" stroke-width="${m===st.mdl?2.6:1.3}" opacity="${m===st.mdl?1:.75}"/>`).join('')}</svg><div class="legend">${D.models.map(m=>`<span><i class="sw" style="background:${col[m]}"></i>${SHORTN[m]}</span>`).join('')}</div>`}
+
+function knox(){const K=D.knox;const d=K.distance_bands_m,t=K.time_bands_days;const sh=v=>{const a=Math.min(1,Math.max(0,(v-1)/.25));return `background:color-mix(in srgb, var(--hit) ${Math.round(a*55)}%, transparent)`};
+ $('#knox').innerHTML=`<thead><tr><th style="text-align:left">Distance apart</th>${t.slice(1).map((v,i)=>`<th style="text-align:center">${t[i]}–${v} days</th>`).join('')}</tr></thead><tbody>${K.ratio.map((r,i)=>`<tr><td>${d[i]}–${d[i+1]} m</td>${r.map(v=>`<td style="${sh(v)}">${v.toFixed(2)}</td>`).join('')}</tr>`).join('')}</tbody>`}
+
+function cover(){$('#cover').innerHTML=`<thead><tr><th>Crime</th><th>Poisson</th><th>Negative binomial</th><th>Target</th></tr></thead><tbody>${Object.values(D.types).map(T=>`<tr><td>${T.label}</td><td>${pct(T.station_interval_coverage.poisson)}</td><td>${pct(T.station_interval_coverage.neg_binomial)}</td><td>80%</td></tr>`).join('')}</tbody>`}
+
+function bias(){const P=D.prosper_share;const rows=Object.entries(D.types).map(([k,T])=>[T.label,D.prosper_share_of_crime[k],D.bias_prosper_share_of_flagged[k][st.mdl==='naive'?'naive':'self_exciting']]);
+ $('#bias').innerHTML=`<p class="note" style="margin-top:0">The 15 Operation Prosper precincts cover <b>${pct(P.area)}</b> of the populated area and hold <b>${pct(P.population)}</b> of residents. Their share of each crime type (real SAPS figures) and of the blocks the self-exciting method flags:</p><div class="tbl"><table><thead><tr><th>Crime</th><th>Share of crimes</th><th>Share of flagged blocks</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r[0]}</td><td>${pct(r[1])}</td><td>${pct(r[2])}</td></tr>`).join('')}</tbody></table></div>`}
+
+function feedback(){const F=D.feedback;const W=460,H=180,n=F.detections.patrols_in_truly_highest_areas.length;const x=d3.scaleLinear([0,n-1],[34,W-8]),y=d3.scaleLinear([0,1],[H-22,8]);
+ const ser=[['detections','Patrol where detections were highest',css('--bad'),'patrols_in_truly_highest_areas'],['reported','Patrol by crime the public reports',css('--good'),'patrols_in_truly_highest_areas'],['detections','Detections caught in patrolled areas (looks like success)',css('--bad'),'detections_share_in_patrolled',true]];
+ const ln=a=>d3.line().x((d,i)=>x(i)).y(d=>y(d))(a);
+ $('#fb').innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Feedback loop simulation">${[0,.25,.5,.75,1].map(t=>`<line x1="34" x2="${W-8}" y1="${y(t)}" y2="${y(t)}" stroke="${css('--line')}"/><text x="30" y="${y(t)+3}" text-anchor="end">${t*100}%</text>`).join('')}${[0,6,12,18,n-1].map(i=>`<text x="${x(i)}" y="${H-6}" text-anchor="middle">m${i+1}</text>`).join('')}${ser.map(s=>`<path d="${ln(F[s[0]][s[3]])}" fill="none" stroke="${s[2]}" stroke-width="2" ${s[4]?'stroke-dasharray="5 4"':''}/>`).join('')}</svg><div class="legend">${ser.map(s=>`<span><i class="sw" style="background:${s[2]};${s[4]?'opacity:.5':''}"></i>${s[1]}</span>`).join('')}</div><p class="note">Solid lines: share of patrols that reach the areas with the most real activity. After 24 months, detection-led patrolling reaches ${pct(F.detections.patrols_in_truly_highest_areas.at(-1))} against ${pct(F.reported.patrols_in_truly_highest_areas.at(-1))} for report-led, while its detection figures look better (${pct(F.detections.detections_share_in_patrolled.at(-1))} caught in patrolled areas).</p>`}
+
+function need(){const R=[
+ ['Crime counts per station per month','real','SAPS quarterly releases (public)','Already in use'],
+ ['Location and time of each crime','syn','SAPS Crime Administration System (CAS) case records, geocoded; via data-sharing agreement with SAPS / Department of Police Oversight and Community Safety','Real hotspots, near-repeat patterns, real accuracy figures'],
+ ['Calls for help','syn','SAPS 10111 and City of Cape Town emergency call logs','Demand that is less shaped by where police patrol'],
+ ['Independent check on violence','syn','Forensic Pathology Service mortuary records; trauma unit admissions (Western Cape Health)','Confirms police counts and finds under-reporting'],
+ ['Gang territories and conflicts','syn','SAPS Crime Intelligence, provincial gang task teams, GI-TOC researchers','Separates gang violence from other murders'],
+ ['Population per block','real','Stats SA 2022 ward estimates and Census 2011 sub-places (public)','Already in use; Census 2022 small areas would sharpen it'],
+ ['Places that attract crime','syn','City of Cape Town land use, liquor licences, transport hubs, schools (open data)','Risk terrain modelling: why a place is risky, not just that it is']];
+ $('#need').innerHTML=`<thead><tr><th>Ingredient</th><th>In this demo</th><th style="text-align:left">Real source and how to get it</th><th style="text-align:left">What it unlocks</th></tr></thead><tbody>${R.map(r=>`<tr><td>${r[0]}</td><td><span class="pill ${r[1]}">${r[1]==='real'?'Real':'Simulated'}</span></td><td style="text-align:left;font-family:var(--body);white-space:normal">${r[2]}</td><td style="text-align:left;font-family:var(--body);white-space:normal">${r[3]}</td></tr>`).join('')}</tbody>`}
+</script>
