@@ -11,6 +11,10 @@ data.
 
 It is part of the CrimeStats work (private repository `joeyreddy/crimestats`).
 
+- **Live demo (private):** https://claude.ai/artifact/DaRyQ949ZNePGVbowqAvuf
+- **Status, open items and decisions:** [docs/status.md](docs/status.md)
+- **Related:** CrimeStats dashboard https://claude.ai/artifact/FJjEVNzy9X3z7wUdtkmHst · 3D https://claude.ai/artifact/L8p7iFogpgGxtUo2dmUBH8
+
 ## What it does
 
 1. **Grid**: 19,848 populated 500 m blocks (4,962 km²) and 80 rural cells across 152 Western Cape
