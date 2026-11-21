@@ -78,6 +78,7 @@ def main():
         "prosper_share": {"area": round(float(prosper_cells[grid].mean()), 3),
                           "population": round(float(pop[prosper_cells].sum() / pop.sum()), 3)},
         "months": ev["months"], "models": ev["models"], "knox": ev["knox"],
+        "places": json.loads((INPUTS / "places.json").read_text()) if (INPUTS / "places.json").exists() else {},
         "types": {}, "bias_prosper_share_of_flagged": bias, "prosper_share_of_crime": crime_share, "feedback": feedback_sim(),
     }
     for t, v in ev["types"].items():

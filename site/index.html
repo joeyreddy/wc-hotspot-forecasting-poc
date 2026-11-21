@@ -77,7 +77,7 @@ svg text{fill:var(--muted);font-family:var(--mono);font-size:10px}
 <div class="seg" id="view" aria-label="Map view"><button type="button" data-v="wc" aria-pressed="false">Province</button><button type="button" data-v="ct" aria-pressed="true">Cape Town</button><button type="button" data-v="flats" aria-pressed="false">Cape Flats</button></div>
 </div>
 <div id="mapbox"><canvas id="map" aria-label="Map of flagged 500 metre blocks and crimes"></canvas></div>
-<div class="legend"><span><i class="sw" style="background:var(--flag)"></i>Flagged block (top 5%)</span><span><i class="dot"></i>Crime that month (size = count)</span><span><i class="sw" style="background:var(--pop);opacity:.25"></i>Populated block</span><span>Drag to pan, scroll or pinch to zoom</span></div>
+<div class="legend"><span><i class="sw" style="background:var(--flag)"></i>Flagged block (top 5%)</span><span><i class="dot"></i>Crime that month (size = count)</span><span><i class="sw" style="background:var(--pop);opacity:.25"></i>Populated block</span><span>Labels: municipalities, then police precincts, then suburbs as you zoom in</span><span>Drag to pan, scroll or pinch to zoom</span></div>
 <div class="monthline" id="monthline"></div>
 </section>
 
@@ -135,7 +135,7 @@ const VIEWS={wc:null,ct:[[18.3,-34.25],[18.95,-33.55]],flats:[[18.45,-34.08],[18
 const css=k=>getComputedStyle(document.documentElement).getPropertyValue(k).trim();
 const pct=v=>Math.round(v*100)+'%';
 const undelta=a=>{let p=0;return a.map(d=>p+=d)};
-let D,st={typ:'murder',mdl:'self_exciting',mon:23,view:'ct'},proj,zt=d3.zoomIdentity,cellPx=2;
+let PROVSCALE=1;let D,st={typ:'murder',mdl:'self_exciting',mon:23,view:'ct'},proj,zt=d3.zoomIdentity,cellPx=2;
 
 fetch('poc-data.json').then(r=>r.json()).then(d=>{D=d;init()}).catch(()=>{$('#monthline').textContent='The data file could not load. Reload the page to try again.'});
 
@@ -156,7 +156,7 @@ function init(){
 function fit(reset){const box=$('#mapbox'),cv=$('#map'),w=box.clientWidth,h=box.clientHeight,dpr=Math.min(2,devicePixelRatio||1);
  cv.width=w*dpr;cv.height=h*dpr;const ctx=cv.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);
  const v=VIEWS[st.view];const pts=v?{type:'MultiPoint',coordinates:v}:{type:'MultiPoint',coordinates:D.cells.lon.map((x,i)=>[x,D.cells.lat[i]])};
- proj=d3.geoMercator().fitExtent([[10,10],[w-10,h-10]],pts);
+ proj=d3.geoMercator().fitExtent([[10,10],[w-10,h-10]],pts);PROVSCALE=d3.geoMercator().fitExtent([[10,10],[w-10,h-10]],{type:'MultiPoint',coordinates:D.cells.lon.map((x,i)=>[x,D.cells.lat[i]])}).scale();
  const a=proj([18.6,-33.9]),b=proj([18.6+500/(111320*Math.cos(33.9*Math.PI/180)),-33.9]);cellPx=Math.max(.6,b[0]-a[0]);
  if(reset){zt=d3.zoomIdentity;d3.select(cv).call(d3.zoom().transform,d3.zoomIdentity)}draw()}
 
@@ -171,6 +171,15 @@ function draw(){if(!D||!proj)return;const cv=$('#map'),ctx=cv.getContext('2d'),w
  for(const i of flags){const p=proj([C.lon[i],C.lat[i]]);ctx.fillRect(p[0]-s/2,p[1]-s/2,s,s)}
  ctx.globalAlpha=.85;ctx.fillStyle=hitC;ctx.strokeStyle=fg;ctx.lineWidth=.6/zt.k;
  act.forEach((i,k)=>{if(C.rural[i])return;const p=proj([C.lon[i],C.lat[i]]);const r=Math.max(1.3/zt.k,Math.sqrt(n[k])*Math.max(1.2,s*.35));ctx.beginPath();ctx.arc(p[0],p[1],r,0,7);ctx.fill();if(flags.has(i))ctx.stroke()});
+ ctx.restore();drawPlaces(ctx,w,h)}
+function drawPlaces(ctx,w,h){const P=D.places;if(!P||!P.muni)return;const z=proj.scale()*zt.k/PROVSCALE;
+ const sets=[];if(z<4)sets.push(['muni',P.muni,13,600]);if(z>=2.5&&z<16)sets.push(['station',P.station,12,600]);if(z>=9)sets.push(['suburb',P.suburb,11,400]);
+ const placed=[];const fg=css('--fg'),bg=css('--panel'),mu=css('--muted');ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+ for(const [lv,list,fs,wt] of sets){const items=list.map(p=>{const q=proj([p[1],p[2]]);return {t:p[0],x:zt.applyX(q[0]),y:zt.applyY(q[1]),pop:p[3]}}).filter(it=>it.x>0&&it.x<w&&it.y>0&&it.y<h).sort((a,b)=>b.pop-a.pop);
+  ctx.font=`${lv==='muni'?'600 ':(lv==='station'?'500 ':'400 ')}${fs}px ${getComputedStyle(document.body).fontFamily}`;
+  for(const it of items){const txt=lv==='station'?it.t+' SAPS':it.t;const tw=ctx.measureText(txt).width,th=fs*1.25;const b=[it.x-tw/2-4,it.y-th/2-2,it.x+tw/2+4,it.y+th/2+2];
+   if(b[0]<2||b[2]>w-2||b[1]<2||b[3]>h-2)continue;if(placed.some(q=>!(b[2]<q[0]||b[0]>q[2]||b[3]<q[1]||b[1]>q[3])))continue;placed.push(b);
+   ctx.lineWidth=3.5;ctx.strokeStyle=bg;ctx.strokeText(txt,it.x,it.y);ctx.fillStyle=lv==='muni'?fg:(lv==='station'?fg:mu);ctx.fillText(txt,it.x,it.y);if(placed.length>140)break}}
  ctx.restore()}
 
 function render(){const {T,flags,act,n}=cur();const m=T.monthly[st.mdl][st.mon];const mon=D.months[st.mon];
